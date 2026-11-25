@@ -1,0 +1,29 @@
+{
+  "presets": {
+    "cyber_neon_arena": {
+      "accent_color": "#00F0FF",
+      "camera_mode": "dolly_in",
+      "hdr": true
+    },
+    "deep_space_orbit": {
+      "accent_color": "#FF3B5C",
+      "camera_mode": "orbit_slow",
+      "hdr": true
+    },
+    "cinematic_stage": {
+      "accent_color": "#00E5FF",
+      "camera_mode": "static_hero",
+      "hdr": true
+    },
+    "golden_temple_hdr": {
+      "accent_color": "#FFB800",
+      "camera_mode": "orbit_slow",
+      "hdr": true
+    }
+  },
+  "editing_rules": {
+    "default_transition": "cross_dissolve",
+    "caption_style": "clean_bold",
+    "bgm_ducking": true
+  }
+}

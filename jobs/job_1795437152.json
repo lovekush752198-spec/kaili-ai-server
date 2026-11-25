@@ -1,0 +1,56 @@
+{
+  "job_id": "job_1795437152",
+  "source_package": "/data/data/com.termux/files/home/kaili-api/packages/kaili_pkg_1795436151.json",
+  "command_driven": true,
+  "auto_evolve": false,
+  "shot_steps": [
+    {
+      "shot_id": 1,
+      "window": "0s-4s",
+      "duration_sec": 4.0,
+      "preset": "cyber_neon_arena",
+      "camera_mode": "dolly_in",
+      "accent_color": "#00F0FF",
+      "overlay_text": "KAILI AI"
+    },
+    {
+      "shot_id": 2,
+      "window": "4s-13s",
+      "duration_sec": 9.0,
+      "preset": "cyber_neon_arena",
+      "camera_mode": "orbit_slow",
+      "accent_color": "#00F0FF",
+      "overlay_text": "SCENE FLOW"
+    },
+    {
+      "shot_id": 3,
+      "window": "13s-18s",
+      "duration_sec": 5.0,
+      "preset": "cinematic_stage",
+      "camera_mode": "static_hero",
+      "accent_color": "#00F0FF",
+      "overlay_text": "READY"
+    }
+  ],
+  "cuts_count": 2,
+  "audio_config": {
+    "voiceover": {
+      "enabled": true,
+      "script_sync": true
+    },
+    "bgm": {
+      "enabled": true,
+      "duck_under_voice": true
+    },
+    "sfx": [
+      "transition_4s",
+      "beat_13s"
+    ]
+  },
+  "captions_config": {
+    "enabled": true,
+    "style": "clean_bold"
+  },
+  "target_output": "/data/data/com.termux/files/home/kaili-api/renders/kaili_pkg_1795436151.mp4",
+  "android_ffmpeg_base_cmd": "ffmpeg -y -f lavfi -i color=c=black:s=1920x1080:r=60 -t 18 -c:v libx264 -pix_fmt yuv420p \"/data/data/com.termux/files/home/kaili-api/renders/kaili_pkg_1795436151.mp4\""
+}
