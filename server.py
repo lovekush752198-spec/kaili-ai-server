@@ -798,7 +798,7 @@ def chat():
 
 
 
-MEDIA_DIR = "/data/data/com.termux/files/home/kaili-api/media"
+MEDIA_DIR = "./media"
 
 @app.route("/media/<path:filename>")
 def serve_kaili_media(filename):
@@ -806,7 +806,7 @@ def serve_kaili_media(filename):
     return send_from_directory(MEDIA_DIR, safe_name, mimetype="video/mp4") if safe_name.lower().endswith(".mp4") else send_from_directory(MEDIA_DIR, safe_name)
 
 
-@app.route("/data/data/com.termux/files/home/kaili-api/media/<path:filename>", methods=["GET"])
+@app.route("/media/<path:filename>", methods=["GET"])
 def kaili_serve_fullpath_media(filename):
     return send_from_directory(MEDIA_DIR, os.path.basename(filename))
 
@@ -823,7 +823,7 @@ def kaili_media_endpoint():
     })
 
 
-MEDIA_DIR = "/data/data/com.termux/files/home/kaili-api/media"
+MEDIA_DIR = "./media"
 os.makedirs(MEDIA_DIR, exist_ok=True)
 
 def kaili_make_real_mp4(prompt_text="KAILI AI Reel", seconds=6):
@@ -1037,8 +1037,8 @@ def kaili_video_blueprint_route():
     })
 
 
-RULES_FILE = "/data/data/com.termux/files/home/kaili-api/video_rules.json"
-BACKUP_DIR = "/data/data/com.termux/files/home/kaili-api/backups"
+RULES_FILE = "./video_rules.json"
+BACKUP_DIR = "./backups"
 
 def kaili_safe_modify_rule(section, key, value):
     if section not in ("presets", "editing_rules"):
@@ -1071,7 +1071,7 @@ def kaili_self_modify_rule_route():
     return jsonify({"status": "ok" if ok else "error", "message": msg})
 
 
-PACKAGES_DIR = "/data/data/com.termux/files/home/kaili-api/packages"
+PACKAGES_DIR = "./packages"
 
 def kaili_build_render_edit_package(prompt_text, duration_sec=12, aspect_ratio="9:16"):
     if "kaili_build_video_blueprint" in globals():
@@ -1136,11 +1136,11 @@ def kaili_build_package_route():
     })
 
 
-PACKAGES_DIR = "/data/data/com.termux/files/home/kaili-api/packages"
-JOBS_DIR = "/data/data/com.termux/files/home/kaili-api/jobs"
+PACKAGES_DIR = "./packages"
+JOBS_DIR = "./jobs"
 
 def kaili_use_latest_package():
-    base_dir = "/data/data/com.termux/files/home/kaili-api"
+    base_dir = "."
     os.makedirs(JOBS_DIR, exist_ok=True)
     files = sorted(
         glob.glob(os.path.join(PACKAGES_DIR, "kaili_pkg_*.json")),
