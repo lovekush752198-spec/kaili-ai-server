@@ -1,6 +1,7 @@
 import json
 import os
 import re
+import tempfile
 from typing import Dict, List, Optional, Tuple
 from flask import Flask, Response, jsonify, request, stream_with_context
 
@@ -24,8 +25,26 @@ def ensure_storage() -> None:
     os.makedirs(KNOWLEDGE_DIR, exist_ok=True)
     for _, path in DOMAIN_FILES.items():
         if not os.path.exists(path):
-            with open(path, "w", encoding="utf-8") as f:
-                json.dump({}, f, ensure_ascii=False, indent=2)
+            save_json_atomic(path, {})
+
+
+def save_json_atomic(path: str, data: Dict[str, str]) -> None:
+    parent = os.path.dirname(path)
+    os.makedirs(parent, exist_ok=True)
+    fd, tmp_path = tempfile.mkstemp(prefix=".kaili_", suffix=".tmp", dir=parent)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp_path, path)
+    except Exception:
+        if os.path.exists(tmp_path):
+            try:
+                os.remove(tmp_path)
+            except OSError:
+                pass
+        raise
 
 
 def load_domain_knowledge(domain: str) -> Dict[str, str]:
@@ -35,57 +54,65 @@ def load_domain_knowledge(domain: str) -> Dict[str, str]:
         with open(path, "r", encoding="utf-8") as f:
             data = json.load(f)
             if isinstance(data, dict):
-                return {str(k).strip().lower(): str(v) for k, v in data.items()}
+                return {str(k).strip().lower(): str(v) for k, v in data.items() if str(k).strip()}
     except Exception:
-        pass
+        return {}
     return {}
 
 
 def save_domain_knowledge(domain: str, data: Dict[str, str]) -> None:
     ensure_storage()
     path = DOMAIN_FILES.get(domain, DOMAIN_FILES["chat"])
-    with open(path, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
+    save_json_atomic(path, data)
+
+
+def _tokenize(text: str) -> set:
+    return set(re.findall(r"[a-z0-9\u0900-\u097f]+", text.lower()))
 
 
 # Layer 3: Topic Classifier
 def classify_topic(message: str) -> str:
-    text = message.lower()
-    coding_keywords = [
-        "code", "cod", "coding", "python", "c#", "csharp", "html", "css",
+    tokens = _tokenize(message)
+    coding_tokens = {
+        "code", "cod", "coding", "python", "c", "csharp", "html", "css",
         "javascript", "js", "flask", "api", "git", "unreal", "ue5", "3d",
         "sequencer", "ffmpeg", "render", "voice", "audio", "function", "bug",
-    ]
-    study_keywords = [
+        "video", "prompt", "pov", "workflow", "script", "server", "apk",
+    }
+    study_tokens = {
         "formula", "formule", "farmula", "math", "ganit", "trikonmiti",
         "rikormiti", "sin", "cos", "tan", "pythagoras", "varg", "vargmul",
         "jod", "ghatana", "guna", "bhag", "science", "saince", "vigyan",
         "physics", "chemistry", "newton", "ohm", "padhai", "study", "niyam",
-    ]
+        "equation", "samikaran",
+    }
 
-    if any(k in text for k in coding_keywords):
+    c_score = len(tokens.intersection(coding_tokens))
+    s_score = len(tokens.intersection(study_tokens))
+
+    if c_score > s_score and c_score > 0:
         return "coding"
-    if any(k in text for k in study_keywords):
+    if s_score > c_score and s_score > 0:
+        return "study"
+    if c_score > 0:
+        return "coding"
+    if s_score > 0:
         return "study"
     return "chat"
 
 
-# Layer 4 & 5: Domain Knowledge Lookup + Reasoning/Composition
-def find_best_knowledge(domain: str, query: str) -> Tuple[Optional[str], str]:
+def _search_in_domain(domain: str, q: str, q_tokens: set) -> Tuple[Optional[str], str]:
     kb = load_domain_knowledge(domain)
-    q = query.strip().lower()
-
     if q in kb:
         return kb[q], f"layer5->layer4-{domain}-exact"
 
-    q_tokens = set(re.findall(r"[a-z0-9\u0900-\u097f]+", q))
     if not q_tokens:
-        return None, f"layer5-no-entry-yet"
+        return None, "layer5-no-entry-yet"
 
     best_score = 0
     best_ans: Optional[str] = None
     for k, v in kb.items():
-        k_tokens = set(re.findall(r"[a-z0-9\u0900-\u097f]+", k))
+        k_tokens = _tokenize(k)
         if not k_tokens:
             continue
         overlap = len(q_tokens.intersection(k_tokens))
@@ -93,22 +120,31 @@ def find_best_knowledge(domain: str, query: str) -> Tuple[Optional[str], str]:
             best_score = overlap
             best_ans = v
 
-    if best_ans and best_score >= 1:
+    if best_ans and best_score >= 2:
         return best_ans, f"layer5->layer4-{domain}-matched"
-
-    # Check other domains if not found in primary domain
-    for other_domain in ["coding", "study", "chat"]:
-        if other_domain == domain:
-            continue
-        other_kb = load_domain_knowledge(other_domain)
-        if q in other_kb:
-            return other_kb[q], f"layer5->layer4-{other_domain}-cross-exact"
-
     return None, "layer5-no-entry-yet"
 
 
+# Layer 4 & 5: Domain Knowledge Lookup + Reasoning/Composition
+def find_best_knowledge(domain: str, query: str) -> Tuple[Optional[str], str, str]:
+    q = " ".join(query.strip().lower().split())
+    q_tokens = _tokenize(q)
+
+    ans, src = _search_in_domain(domain, q, q_tokens)
+    if ans:
+        return ans, src, domain
+
+    for other in ["coding", "study", "chat"]:
+        if other == domain:
+            continue
+        ans, src = _search_in_domain(other, q, q_tokens)
+        if ans:
+            return ans, f"{src}-cross", other
+
+    return None, "layer5-no-entry-yet", domain
+
+
 def parse_seekho_command(message: str) -> Optional[Tuple[str, str, str]]:
-    # Format: seekho [coding]: question = answer
     m = re.match(
         r"^\s*seekho\s*\[(chat|study|coding)\]\s*:\s*(.+?)\s*=\s*(.+)$",
         message,
@@ -117,8 +153,10 @@ def parse_seekho_command(message: str) -> Optional[Tuple[str, str, str]]:
     if not m:
         return None
     domain = m.group(1).lower()
-    question = m.group(2).strip().lower()
+    question = " ".join(m.group(2).strip().lower().split())
     answer = m.group(3).strip()
+    if not question or not answer:
+        return None
     return domain, question, answer
 
 
@@ -139,7 +177,7 @@ def process_message(session_id: str, message: str) -> Dict[str, object]:
         turns.append({"role": "assistant", "text": reply})
         return {
             "ok": True,
-            "architecture": "7-layer-domains",
+            "architecture": "7-layer-domains-hardened",
             "creator": CREATOR,
             "greeting": DEFAULT_GREETING,
             "session_id": session_id,
@@ -150,33 +188,32 @@ def process_message(session_id: str, message: str) -> Dict[str, object]:
             "source": f"layer5->teach-{domain}",
         }
 
-    domain = classify_topic(message)
-    found, source = find_best_knowledge(domain, message)
+    classified = classify_topic(message)
+    found, source, resolved_domain = find_best_knowledge(classified, message)
 
     if found:
         reply = found if found.lower().startswith(DEFAULT_GREETING.lower()) else f"{DEFAULT_GREETING}, {found}"
     else:
         reply = (
-            f"{DEFAULT_GREETING}, `{message}` ka gyan abhi `knowledge/{domain}.json` mein darj nahi hai "
+            f"{DEFAULT_GREETING}, `{message}` ka gyan abhi `knowledge/{resolved_domain}.json` mein darj nahi hai "
             f"(session turns: {len(turns)}).\n"
-            f"Aap likh kar sikha sakte hain: `seekho [{domain}]: {message} = aapka jawab`"
+            f"Aap likh kar sikha sakte hain: `seekho [{resolved_domain}]: {message} = aapka jawab`"
         )
 
     turns.append({"role": "assistant", "text": reply})
     return {
         "ok": True,
-        "architecture": "7-layer-domains",
+        "architecture": "7-layer-domains-hardened",
         "creator": CREATOR,
         "greeting": DEFAULT_GREETING,
         "session_id": session_id,
-        "domain": domain,
-        "knowledge_file": f"knowledge/{domain}.json",
+        "domain": resolved_domain,
+        "knowledge_file": f"knowledge/{resolved_domain}.json",
         "reply": reply,
         "source": source,
     }
 
 
-# Layer 1 & Layer 7: Gateway & Runtime
 @app.get("/")
 def home():
     ensure_storage()
@@ -186,7 +223,7 @@ def home():
         "service": "KAILI AI Server",
         "creator": CREATOR,
         "greeting": DEFAULT_GREETING,
-        "architecture": "7-layer-domains",
+        "architecture": "7-layer-domains-hardened",
         "knowledge_counts": counts,
     })
 
@@ -203,7 +240,7 @@ def api_teach():
     domain = str(body.get("domain", "chat")).strip().lower()
     if domain not in DOMAIN_FILES:
         domain = "chat"
-    question = str(body.get("question", "")).strip().lower()
+    question = " ".join(str(body.get("question", "")).strip().lower().split())
     answer = str(body.get("answer", "")).strip()
     if not question or not answer:
         return jsonify({"ok": False, "error": "question and answer are required"}), 400
