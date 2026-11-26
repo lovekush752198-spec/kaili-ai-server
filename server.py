@@ -312,3 +312,15 @@ def handle_message_with_engines(client_key: str, message: str):
     if routed and routed.get("handled"):
         return routed["reply"]
     return None
+
+# === KAILI_ENGINE_BRIDGE_HOOK_V2 ===
+from kaili_server_bridge import guard_request as _guard_v2, route_smart_command as _route_v2
+
+def kaili_smart_answer(client_key: str, message: str):
+    g = _guard_v2(client_key, message)
+    if not g.get("ok"):
+        return g["reply"]
+    r = _route_v2(message)
+    if r and r.get("handled"):
+        return r["reply"]
+    return None

@@ -6,7 +6,26 @@ from kaili_studio_engine import produce_4k_video_with_voice
 from kaili_ultimate_core import CREATOR, GREETING, build_multi_scene_package, self_heal_knowledge_dir
 from math_science_engine import eval_expression, solve_science, solve_trigonometry, square_and_root
 
-_BRIDGE_LIMITER = RateLimiter(max_requests=45, window_seconds=60)
+_BRIDGE_LIMITER = RateLimiter(max_requests=60, window_seconds=60)
+
+
+def normalize_math_text(text: str) -> str:
+    s = (text or "").strip()
+    # Convert unicode root symbols like √144 or √(144) to sqrt(...)
+    s = re.sub(r"√\s*\(\s*([^)]+)\s*\)", r"sqrt(\1)", s)
+    s = re.sub(r"√\s*(\d+(?:\.\d+)?)", r"sqrt(\1)", s)
+    return s
+
+
+def _looks_like_math_expr(expr: str) -> bool:
+    e = expr.strip().lower()
+    if not e or len(e) > 120:
+        return False
+    # Allow numbers, basic operators, trig/sqrt functions, spaces, parentheses, dots
+    allowed_tokens = re.sub(r"\b(sin|cos|tan|sqrt|log|pi|e)\b", "", e)
+    if not re.fullmatch(r"[0-9+\-*/().^%\s]+", allowed_tokens):
+        return False
+    return bool(re.search(r"[0-9]", e) and re.search(r"[+\-*/^%]|\b(sin|cos|tan|sqrt)\b", e))
 
 
 def guard_request(client_key: str, text: str) -> Dict[str, object]:
@@ -31,11 +50,11 @@ def guard_request(client_key: str, text: str) -> Dict[str, object]:
 
 
 def route_smart_command(message: str) -> Optional[Dict[str, object]]:
-    """Handle direct math, trigonometry, science, or 4K studio commands cleanly."""
-    raw = (message or "").strip()
-    low = raw.lower()
+    """Handle math (including 2+2 and √144), trig, science, or 4K studio commands."""
+    raw = normalize_math_text(message or "")
+    low = raw.lower().strip()
 
-    # 1. Direct math expression (e.g., 'calc: (20+5)*2' or pure arithmetic/trig expression)
+    # 1. Explicit calc:/math: OR any clean arithmetic/sqrt/trig expression like '2+2' or 'sqrt(144)'
     if low.startswith("calc:") or low.startswith("math:"):
         expr = raw.split(":", 1)[1].strip()
         res = eval_expression(expr)
@@ -48,7 +67,17 @@ def route_smart_command(message: str) -> Optional[Dict[str, object]]:
             }
         return {"handled": True, "engine": "math_science_engine", "reply": f"{GREETING}, {res.get('error')}", "data": res}
 
-    # 2. Square & square root (e.g., 'varg 144' or 'sqrt 225')
+    if _looks_like_math_expr(raw):
+        res = eval_expression(raw)
+        if res.get("ok"):
+            return {
+                "handled": True,
+                "engine": "math_science_engine.eval_expression",
+                "reply": f"{GREETING}, {res.get('expression')} = {res.get('result')}",
+                "data": res,
+            }
+
+    # 2. Square & square root words
     m_sq = re.match(r"^(?:varg|square|sqrt|vargmul)\s+(-?\d+(?:\.\d+)?)$", low)
     if m_sq:
         num = float(m_sq.group(1))
@@ -61,7 +90,7 @@ def route_smart_command(message: str) -> Optional[Dict[str, object]]:
             "data": res,
         }
 
-    # 3. Trigonometry / Pythagoras (e.g., 'trig p=3 b=4')
+    # 3. Trigonometry / Pythagoras
     if low.startswith("trig ") or low.startswith("trikonmiti "):
         nums = {k.lower(): float(v) for k, v in re.findall(r"\b([pbh])\s*=\s*(-?\d+(?:\.\d+)?)", low)}
         res = solve_trigonometry(
@@ -81,7 +110,7 @@ def route_smart_command(message: str) -> Optional[Dict[str, object]]:
             }
         return {"handled": True, "engine": "math_science_engine", "reply": f"{GREETING}, {res.get('error')}", "data": res}
 
-    # 4. Science formula (e.g., 'sci force m=5 a=2')
+    # 4. Science formula
     if low.startswith("sci ") or low.startswith("science "):
         parts = low.split()
         if len(parts) >= 2:
@@ -97,7 +126,7 @@ def route_smart_command(message: str) -> Optional[Dict[str, object]]:
                 }
             return {"handled": True, "engine": "math_science_engine", "reply": f"{GREETING}, {res.get('error')}", "data": res}
 
-    # 5. 4K Scene Plan / Render command (e.g., '4k plan: ...' or '4k render: ...')
+    # 5. 4K Scene Plan / Render
     if low.startswith("4k plan:") or low.startswith("4k video:"):
         topic = raw.split(":", 1)[1].strip() or "KAILI 4K Vision"
         pkg = build_multi_scene_package(topic=topic, style="pov", scenes=3, sec_per_scene=3)
@@ -134,8 +163,5 @@ def bridge_health_check() -> Dict[str, object]:
 
 
 if __name__ == "__main__":
-    print("Health:", bridge_health_check())
-    print("Calc:", route_smart_command("calc: (18 + 12) / 3 + sin(30)"))
-    print("Trig:", route_smart_command("trig p=3 b=4"))
-    print("Sci:", route_smart_command("sci force m=4 a=3"))
-    print("4K Plan:", route_smart_command("4k plan: POV Action Scene"))
+    print("2+2:", route_smart_command("2+2")["reply"])
+    print("√144:", route_smart_command("√144")["reply"])
