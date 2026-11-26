@@ -2,3 +2,8 @@ __pycache__/
 *.pyc
 *.bak*
 .env
+backups/
+renders/
+renders_4k/
+packages/
+memory.json
