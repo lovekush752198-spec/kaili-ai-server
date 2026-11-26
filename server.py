@@ -8,7 +8,7 @@ app = Flask(__name__)
 
 CREATOR_NAME = "LAVKUSH KUMAR"
 DEFAULT_GREETING = "Boss"
-DEFAULT_MODEL = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash").strip()
+DEFAULT_MODEL = os.environ.get("GEMINI_MODEL", "gemini-3.8-flash").strip()
 
 SESSIONS = {}
 MAX_HISTORY_TURNS = 16
