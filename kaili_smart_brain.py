@@ -4,8 +4,10 @@ import re
 from datetime import datetime
 from typing import Dict, List, Optional
 
+from kaili_app_builder import handle_app_command
 from kaili_server_bridge import guard_request, normalize_math_text, route_smart_command
 from kaili_ultimate_core import CREATOR, GREETING, self_heal_knowledge_dir
+from kaili_web_builder import build_website_project
 
 
 def _load_knowledge_entries(knowledge_dir: str = "knowledge") -> List[Dict[str, str]]:
@@ -71,48 +73,38 @@ def _search_knowledge(query: str, knowledge_dir: str = "knowledge") -> Optional[
     return best_ans
 
 
+def _try_builder_command(text: str) -> Optional[str]:
+    t = (text or "").strip()
+    low = t.lower()
+
+    app_res = handle_app_command(t)
+    if app_res and app_res.get("ok"):
+        files_txt = ", ".join(app_res.get("files", []))
+        return (
+            f"{GREETING}, Mini App '{app_res.get('app_name')}' taiyar hai!\n"
+            f"Folder: {app_res.get('app_dir')}\n"
+            f"Files: {files_txt}"
+        )
+
+    for prefix in ("website banao:", "create website:", "build website:", "वेबसाइट बनाओ:"):
+        if low.startswith(prefix):
+            topic = t[len(prefix):].strip() or "KAILI Web Showcase"
+            web_res = build_website_project(topic=topic, brand_name="KAILI AI")
+            if web_res.get("ok"):
+                files_txt = ", ".join(web_res.get("files", []))
+                return (
+                    f"{GREETING}, Website '{web_res.get('topic')}' taiyar hai!\n"
+                    f"Folder: {web_res.get('site_dir')}\n"
+                    f"Files: {files_txt}"
+                )
+
+    return None
+
+
+from kaili_unstoppable_voice import build_unstoppable_reply as _unstoppable_reply
+
 def _smart_general_reply(raw_text: str) -> str:
-    text = (raw_text or "").strip()
-    low = text.lower()
-
-    # Greetings & identity
-    if re.search(r"\b(hi|hello|hey|namaste|namaskar|ao|kya haal|kaise ho|kaisi ho)\b", low) or "नमस्ते" in text:
-        return (
-            f"{GREETING}, मैं KAILI AI हूँ—जिसे {CREATOR} ने तैयार किया है। "
-            f"बताइए आज हम किस पर काम करें? गणित/विज्ञान हल करना हो, 4K/3D वीडियो प्लान बनाना हो, "
-            f"कोडिंग करनी हो या कोई भी सवाल पूछना हो—बेझिझक बोलिए।"
-        )
-
-    if any(k in low for k in ["kaun ho", "tumhara naam", "who are you", "about you", "creator", "kisne banaya"]):
-        return (
-            f"{GREETING}, मेरा नाम KAILI AI है और मेरे क्रिएटर {CREATOR} हैं। "
-            f"मैं गणित, त्रिकोणमिति, विज्ञान गणना, 4K/3D वीडियो डायरेक्शन, कोड सहायता और आपके ज्ञान भंडार के साथ काम करता हूँ।"
-        )
-
-    if any(k in low for k in ["time", "samay", "date", "aaj ki tarikh", "waqt"]):
-        now = datetime.now().strftime("%d-%m-%Y %I:%M %p")
-        return f"{GREETING}, अभी का समय और तारीख है: {now}।"
-
-    # Help / capabilities
-    if any(k in low for k in ["help", "madad", "kya kar sakte", "features", "commands"]):
-        return (
-            f"{GREETING}, मैं आपकी इन चीज़ों में मदद कर सकता हूँ:\n"
-            f"1. गणित और विज्ञान: सीधे `2+2`, `√144`, `(18+12)/3`, `trig p=3 b=4`, या `sci force m=5 a=3` लिखें।\n"
-            f"2. 4K और 3D वीडियो: `4k plan: ...`, `4k render: ...` या 3D सीन डायरेक्शन।\n"
-            f"3. नया ज्ञान सिखाना: `seekho [chat]: सवाल = जवाब` लिखकर आप मुझे कोई भी कस्टम उत्तर सिखा सकते हैं।"
-        )
-
-    # Helpful reasoning fallback for open questions
-    if len(text) >= 2:
-        return (
-            f"{GREETING}, आपने \"{text}\" पूछा है। "
-            f"अगर यह गणित या विज्ञान से जुड़ा है तो आप समीकरण/मान स्पष्ट लिखें (जैसे `2+2`, `√144`, `trig p=3 b=4`, या `sci force m=4 a=3`), "
-            f"और अगर आप चाहते हैं कि मैं इस विशेष वाक्य पर हमेशा एक तय जवाब दूँ, तो लिखें: "
-            f"`seekho [chat]: {text} = आपका तय जवाब`।"
-        )
-
-    return f"{GREETING}, कृपया अपना सवाल या कमांड लिखें।"
-
+    return str(_unstoppable_reply(raw_text).get('reply') or '')
 
 def generate_smart_response(message: str, client_key: str = "boss", knowledge_dir: str = "knowledge") -> Dict[str, object]:
     raw = (message or "").strip()
@@ -124,7 +116,14 @@ def generate_smart_response(message: str, client_key: str = "boss", knowledge_di
             "reply": str(guard.get("reply")),
         }
 
-    # 1. Direct math, trig, science, 4K studio routing
+    builder_out = _try_builder_command(raw)
+    if builder_out:
+        return {
+            "ok": True,
+            "mode": "kaili_app_web_builder",
+            "reply": builder_out,
+        }
+
     normalized = normalize_math_text(raw)
     routed = route_smart_command(normalized)
     if routed and routed.get("handled"):
@@ -134,7 +133,6 @@ def generate_smart_response(message: str, client_key: str = "boss", knowledge_di
             "reply": str(routed.get("reply")),
         }
 
-    # 2. Knowledge base match
     kb_ans = _search_knowledge(raw, knowledge_dir=knowledge_dir)
     if kb_ans:
         return {
@@ -143,7 +141,6 @@ def generate_smart_response(message: str, client_key: str = "boss", knowledge_di
             "reply": f"{GREETING}, {kb_ans}" if not kb_ans.startswith(GREETING) else kb_ans,
         }
 
-    # 3. Smart conversational response
     return {
         "ok": True,
         "mode": "smart_conversational_brain",
@@ -152,7 +149,5 @@ def generate_smart_response(message: str, client_key: str = "boss", knowledge_di
 
 
 if __name__ == "__main__":
-    samples = ["2+2", "√144", "नमस्ते कैली", "tum kaun ho", "kya kar sakte ho"]
-    for s in samples:
-        out = generate_smart_response(s)
-        print(f"Q: {s}\nA ({out['mode']}): {out['reply']}\n---")
+    r = generate_smart_response("app banao: Boss Calculator - Simple calculator app")
+    print(r["reply"])
