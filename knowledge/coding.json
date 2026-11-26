@@ -1,0 +1,6 @@
+{
+  "3d video me voice kaise dale": "Boss, 3D video mein voice daalne ke do mukhya tarike hain:\n1. UE5 Sequencer mein Audio Track laga kar .wav/.mp3 voice file timeline par set karein.\n2. 3D video render hone ke baad FFmpeg ya video editor se voice audio ko video ke saath merge karein taaki audio-video sync bilkul saaf rahe.",
+  "ue5 sequencer audio track": "Boss, Unreal Engine 5 ke Sequencer mein `+ Track -> Audio Track` chunein aur apni narration ya dialogue audio file add karke camera/scene animation ke saath time match karein.",
+  "ffmpeg se video me voice kaise jode": "Boss, video aur voice audio ko mila kar final .mp4 banane ke liye FFmpeg command:\n```bash\nffmpeg -i video.mp4 -i voice.mp3 -c:v copy -c:a aac -shortest output_with_voice.mp4\n```",
+  "3d video with voice workflow": "Boss, voice ke saath 3D video banane ka poora kram:\n1. Script likhein aur voice (recording ya TTS jaise edge-tts) taiyar karein.\n2. Voice ki timing ke hisab se UE5 mein scene/camera animation aur Sequencer set karein.\n3. Video render karein aur audio merge karke final output banayein."
+}
