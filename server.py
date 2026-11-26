@@ -298,3 +298,17 @@ def api_reset():
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", "10000"))
     app.run(host="0.0.0.0", port=port, debug=False)
+
+# === KAILI_ENGINE_BRIDGE_HOOK ===
+import re as _re_bridge
+from kaili_server_bridge import guard_request as _guard_req, route_smart_command as _route_cmd
+
+def handle_message_with_engines(client_key: str, message: str):
+    guard = _guard_req(client_key, message)
+    if not guard.get("ok"):
+        return guard["reply"]
+    normalized = _re_bridge.sub(r"√\s*(\d+(?:\.\d+)?)", r"sqrt(\1)", (message or "").strip())
+    routed = _route_cmd(normalized)
+    if routed and routed.get("handled"):
+        return routed["reply"]
+    return None
