@@ -2,9 +2,12 @@ __pycache__/
 *.pyc
 *.bak*
 .env
+.buildozer/
+bin/
 backups/
 renders/
 renders_4k/
 renders_ultimate/
+renders_3d/
 packages/
 memory.json
