@@ -5,5 +5,6 @@ __pycache__/
 backups/
 renders/
 renders_4k/
+renders_ultimate/
 packages/
 memory.json
