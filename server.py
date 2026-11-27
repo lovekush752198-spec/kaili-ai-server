@@ -403,3 +403,46 @@ def kaili_smart_answer(client_key: str, message: str):
     if r and r.get("handled"):
         return r["reply"]
     return None
+
+
+# --- KAILI MP4 VIDEO RENDERER (/render-video) ---
+import subprocess as _kaili_subprocess
+import uuid as _kaili_uuid
+
+_KAILI_VIDEO_DIR = "/tmp/kaili_renders"
+os.makedirs(_KAILI_VIDEO_DIR, exist_ok=True)
+
+def render_kaili_mp4(prompt_text: str, duration: int = 5) -> str:
+    safe_text = (prompt_text or "KAILI AI - BOSS").replace("'", "").replace(":", " ").replace("\\", " ")[:60]
+    dur = max(1, min(int(duration or 5), 30))
+    out_path = os.path.join(_KAILI_VIDEO_DIR, f"kaili_{_kaili_uuid.uuid4().hex[:8]}.mp4")
+    cmd = [
+        "ffmpeg", "-y",
+        "-f", "lavfi", "-i", f"color=c=#06101a:s=1280x720:d={dur}",
+        "-vf", f"drawtext=text='{safe_text}':fontcolor=white:fontsize=40:x=(w-text_w)/2:y=(h-text_h)/2",
+        "-c:v", "libx264", "-pix_fmt", "yuv420p",
+        out_path
+    ]
+    _kaili_subprocess.run(cmd, check=True, stdout=_kaili_subprocess.DEVNULL, stderr=_kaili_subprocess.DEVNULL)
+    return out_path
+
+if "app" in globals() and "/render-video" not in src:
+    @app.route("/render-video", methods=["POST"])
+    def api_render_video():
+        data = request.get_json(silent=True) or {}
+        prompt = data.get("prompt") or data.get("text") or "KAILI AI - BOSS"
+        duration = data.get("duration") or 5
+        try:
+            mp4_path = render_kaili_mp4(prompt, duration=int(duration))
+            filename = os.path.basename(mp4_path)
+            return jsonify({
+                "ok": True,
+                "status": "rendered",
+                "file": filename,
+                "path": mp4_path,
+                "message": f"Boss, {filename} ready hai."
+            })
+        except Exception as e:
+            return jsonify({"ok": False, "error": str(e)}), 500
+# --- END KAILI MP4 VIDEO RENDERER ---
+
