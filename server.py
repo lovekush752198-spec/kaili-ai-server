@@ -506,3 +506,15 @@ def api_render_video():
         return jsonify({"ok": False, "error": str(e)}), 500
 # --- END KAILI MP4 VIDEO RENDERER ---
 
+# --- KAILI MP4 VIDEO DOWNLOAD ROUTE ---
+from flask import send_from_directory as _kaili_send_from_dir
+
+@app.route("/download-video/<filename>", methods=["GET"])
+def api_download_video(filename):
+    safe_name = os.path.basename(filename)
+    full_path = os.path.join("/tmp/kaili_renders", safe_name)
+    if not os.path.isfile(full_path):
+        return jsonify({"ok": False, "error": "Video not found"}), 404
+    return _kaili_send_from_dir("/tmp/kaili_renders", safe_name, mimetype="video/mp4", as_attachment=False)
+# --- END KAILI MP4 VIDEO DOWNLOAD ROUTE ---
+
