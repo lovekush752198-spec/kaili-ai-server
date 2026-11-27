@@ -7,6 +7,15 @@ from flask import Flask, Response, jsonify, request, stream_with_context
 
 app = Flask(__name__)
 
+
+# === KAILI_CORS_SUPPORT ===
+@app.after_request
+def _kaili_add_cors_headers(response):
+    response.headers["Access-Control-Allow-Origin"] = "*"
+    response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization, X-API-Key"
+    response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS"
+    return response
+
 CREATOR = "LAVKUSH KUMAR"
 DEFAULT_GREETING = "Boss"
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
