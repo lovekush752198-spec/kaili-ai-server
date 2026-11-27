@@ -5,6 +5,76 @@ import tempfile
 from typing import Dict, List, Optional, Tuple
 from flask import Flask, Response, jsonify, request, stream_with_context
 
+
+# --- KAILI MATH SOLVER (SQRT, CBRT, CUBE, SQUARE) ---
+def kaili_fmt_num(val: float) -> str:
+    if math.isnan(val) or math.isinf(val):
+        return "undefined"
+    nearest = round(val)
+    if abs(val - nearest) < 1e-9:
+        return str(int(nearest))
+    return f"{val:.6f}".rstrip("0").rstrip(".")
+
+def kaili_solve_math(text: str):
+    if not text or not isinstance(text, str):
+        return None
+    q = text.strip().lower()
+
+    # Cube root: ∛1728, cbrt(1728), cube root of 1728, 1728 ka ghanmul
+    for pat in [
+        r"∛\s*(-?\d+(?:\.\d+)?)",
+        r"cbrt\s*\(\s*(-?\d+(?:\.\d+)?)\s*\)",
+        r"cube\s*root\s*(?:of\s*)?(-?\d+(?:\.\d+)?)",
+        r"(-?\d+(?:\.\d+)?)\s*(?:ka|ki|ke)?\s*ghanmul",
+        r"ghanmul\s*(?:of\s*)?(-?\d+(?:\.\d+)?)",
+    ]:
+        m = re.search(pat, q)
+        if m:
+            n = float(m.group(1))
+            ans = math.copysign(abs(n) ** (1.0 / 3.0), n)
+            return f"Boss, {kaili_fmt_num(ans)} hota hai."
+
+    # Square root: √144, sqrt(144), square root of 144, 144 ka vargmul
+    for pat in [
+        r"√\s*(\d+(?:\.\d+)?)",
+        r"sqrt\s*\(\s*(\d+(?:\.\d+)?)\s*\)",
+        r"square\s*root\s*(?:of\s*)?(\d+(?:\.\d+)?)",
+        r"(\d+(?:\.\d+)?)\s*(?:ka|ki|ke)?\s*vargmul",
+        r"vargmul\s*(?:of\s*)?(\d+(?:\.\d+)?)",
+    ]:
+        m = re.search(pat, q)
+        if m:
+            n = float(m.group(1))
+            if n < 0:
+                return "Boss, negative number ka real square root nahi hota."
+            ans = math.sqrt(n)
+            return f"Boss, {kaili_fmt_num(ans)} hota hai."
+
+    # Cube: 12^3, 12 ka cube, cube of 12, 12 ka ghan
+    for pat in [
+        r"(-?\d+(?:\.\d+)?)\s*(?:\^|\*\*)\s*3(?:\b|[^0-9])",
+        r"(-?\d+(?:\.\d+)?)\s*(?:ka|ki|ke)?\s*(?:cube|ghan)",
+        r"(?:cube|ghan)\s*(?:of\s*)?(-?\d+(?:\.\d+)?)",
+    ]:
+        m = re.search(pat, q)
+        if m:
+            n = float(m.group(1))
+            return f"Boss, {kaili_fmt_num(n ** 3)} hota hai."
+
+    # Square: 12^2, 12 ka square, square of 12, 12 ka varg
+    for pat in [
+        r"(-?\d+(?:\.\d+)?)\s*(?:\^|\*\*)\s*2(?:\b|[^0-9])",
+        r"(-?\d+(?:\.\d+)?)\s*(?:ka|ki|ke)?\s*(?:square|varg)",
+        r"(?:square|varg)\s*(?:of\s*)?(-?\d+(?:\.\d+)?)",
+    ]:
+        m = re.search(pat, q)
+        if m:
+            n = float(m.group(1))
+            return f"Boss, {kaili_fmt_num(n ** 2)} hota hai."
+
+    return None
+# --- END KAILI MATH SOLVER ---
+
 app = Flask(__name__)
 
 
