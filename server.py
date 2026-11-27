@@ -411,6 +411,67 @@ import uuid as _kaili_uuid
 _KAILI_VIDEO_DIR = "/tmp/kaili_renders"
 os.makedirs(_KAILI_VIDEO_DIR, exist_ok=True)
 
+
+# --- KAILI SCENE PLAN & NARRATION HELPER ---
+import re as _kaili_re
+
+def extract_video_plan(raw_text: str, requested_duration=None):
+    text = (raw_text or "").strip()
+    if not text:
+        return ("KAILI AI - BOSS", 22)
+
+    # 1. Extract duration from patterns like "(0-22s)", "[14-22s]", "22s", or "22 seconds"
+    dur = None
+    if requested_duration is not None:
+        try:
+            dur = int(requested_duration)
+        except Exception:
+            dur = None
+
+    if dur is None:
+        range_matches = _kaili_re.findall(r"(?:0\s*[-–]\s*|\[\d+\s*[-–]\s*)(\d{1,3})\s*s\b", text, flags=_kaili_re.IGNORECASE)
+        if range_matches:
+            dur = max(int(x) for x in range_matches)
+        else:
+            single_match = _kaili_re.search(r"\b(\d{1,3})\s*(?:s|sec|secs|second|seconds)\b", text, flags=_kaili_re.IGNORECASE)
+            if single_match:
+                dur = int(single_match.group(1))
+
+    if dur is None:
+        dur = 22
+    dur = max(1, min(dur, 60))
+
+    # 2. Extract clean short caption / title for FFmpeg drawtext
+    lines = [ln.strip() for ln in text.splitlines() if ln.strip()]
+    caption = ""
+
+    # Prefer narration/step summary if present
+    step_bits = []
+    for ln in lines:
+        m = _kaili_re.search(r"\b(Step\s*\d+[^.,;\n]*)\b", ln, flags=_kaili_re.IGNORECASE)
+        if m:
+            step_bits.append(m.group(1).strip())
+    if step_bits:
+        caption = " | ".join(step_bits[:3])
+
+    if not caption:
+        for ln in lines:
+            clean_ln = _kaili_re.sub(r"^[\W_]+", "", ln)
+            if clean_ln and not clean_ln.lower().startswith(("boss,", "100% original", "editing & design", "voiceover / narration")):
+                caption = clean_ln
+                break
+
+    if not caption:
+        caption = text
+
+    caption = caption.replace("'", "").replace(":", " ").replace("\\", " ")
+    caption = _kaili_re.sub(r"\s+", " ", caption).strip()[:60]
+    if not caption:
+        caption = "KAILI AI - BOSS"
+
+    return (caption, dur)
+# --- END KAILI SCENE PLAN & NARRATION HELPER ---
+
 def render_kaili_mp4(prompt_text: str, duration: int = 5) -> str:
     safe_text = (prompt_text or "KAILI AI - BOSS").replace("'", "").replace(":", " ").replace("\\", " ")[:60]
     dur = max(1, min(int(duration or 5), 30))
@@ -428,10 +489,11 @@ def render_kaili_mp4(prompt_text: str, duration: int = 5) -> str:
 @app.route("/render-video", methods=["POST"])
 def api_render_video():
     data = request.get_json(silent=True) or {}
-    prompt = data.get("prompt") or data.get("text") or "KAILI AI - BOSS"
-    duration = data.get("duration") or 5
+    raw_prompt = data.get("prompt") or data.get("text") or "KAILI AI - BOSS"
+    req_dur = data.get("duration")
+    caption_text, computed_dur = extract_video_plan(raw_prompt, requested_duration=req_dur)
     try:
-        mp4_path = render_kaili_mp4(prompt, duration=int(duration))
+        mp4_path = render_kaili_mp4(caption_text, duration=int(computed_dur))
         filename = os.path.basename(mp4_path)
         return jsonify({
             "ok": True,
