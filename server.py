@@ -518,3 +518,144 @@ def api_download_video(filename):
     return _kaili_send_from_dir("/tmp/kaili_renders", safe_name, mimetype="video/mp4", as_attachment=False)
 # --- END KAILI MP4 VIDEO DOWNLOAD ROUTE ---
 
+# --- KAILI REAL VISUAL + VOICE RENDER ENGINE ---
+import asyncio as _k_asyncio
+import math as _k_math
+import shutil as _k_shutil
+import subprocess as _k_subprocess
+import tempfile as _k_tempfile
+import uuid as _k_uuid
+import wave as _k_wave
+
+_K_RENDER_DIR = "/tmp/kaili_renders"
+os.makedirs(_K_RENDER_DIR, exist_ok=True)
+
+def _k_clean_text(raw_text: str, max_chars: int = 240) -> str:
+    if not raw_text:
+        return "KAILI AI 4K Studio — Creator: Lavkush Kumar"
+    txt = re.sub(r"[\r\n\t]+", " ", str(raw_text))
+    txt = re.sub(r"[^\x20-\x7E\u0900-\u097F.,!?:;\-_/() ]", " ", txt)
+    txt = re.sub(r"\s+", " ", txt).strip()
+    return (txt[:max_chars] + "...") if len(txt) > max_chars else (txt or "KAILI AI 4K Studio")
+
+def _k_make_fallback_wav(wav_path: str, duration_sec: int = 22, sample_rate: int = 22050) -> str:
+    n_samples = max(1, int(duration_sec * sample_rate))
+    with _k_wave.open(wav_path, "w") as wf:
+        wf.setnchannels(1)
+        wf.setsampwidth(2)
+        wf.setframerate(sample_rate)
+        frames = bytearray()
+        for i in range(n_samples):
+            t = i / sample_rate
+            # Subtle cybernetic pulse + soft harmonic bed so audio track is never empty
+            env = 0.5 + 0.5 * _k_math.sin(2.0 * _k_math.pi * 0.5 * t)
+            sig = 0.08 * env * (_k_math.sin(2.0 * _k_math.pi * 220.0 * t) + 0.4 * _k_math.sin(2.0 * _k_math.pi * 440.0 * t))
+            val = max(-32767, min(32767, int(sig * 32767)))
+            frames.extend(int(val).to_bytes(2, byteorder="little", signed=True))
+        wf.writeframes(bytes(frames))
+    return wav_path
+
+def _k_synthesize_voice_wav(narration_text: str, out_wav: str, duration_sec: int = 22) -> str:
+    clean_say = _k_clean_text(narration_text, max_chars=360)
+
+    # 1) Try edge-tts -> mp3 -> wav
+    if _k_shutil.which("edge-tts"):
+        mp3_tmp = out_wav + ".edge.mp3"
+        try:
+            cmd = ["edge-tts", "--voice", "hi-IN-MadhurNeural", "--text", clean_say, "--write-media", mp3_tmp]
+            _k_subprocess.run(cmd, check=True, timeout=35, stdout=_k_subprocess.DEVNULL, stderr=_k_subprocess.DEVNULL)
+            if os.path.isfile(mp3_tmp) and os.path.getsize(mp3_tmp) > 200:
+                _k_subprocess.run(["ffmpeg", "-y", "-i", mp3_tmp, "-ar", "22050", "-ac", "1", out_wav], check=True, timeout=25, stdout=_k_subprocess.DEVNULL, stderr=_k_subprocess.DEVNULL)
+                if os.path.isfile(out_wav) and os.path.getsize(out_wav) > 200:
+                    return out_wav
+        except Exception:
+            pass
+        finally:
+            if os.path.exists(mp3_tmp):
+                try: os.remove(mp3_tmp)
+                except Exception: pass
+
+    # 2) Try gTTS -> mp3 -> wav
+    try:
+        from gtts import gTTS
+        mp3_tmp = out_wav + ".gtts.mp3"
+        tts = gTTS(text=clean_say, lang="hi")
+        tts.save(mp3_tmp)
+        if os.path.isfile(mp3_tmp) and os.path.getsize(mp3_tmp) > 200:
+            _k_subprocess.run(["ffmpeg", "-y", "-i", mp3_tmp, "-ar", "22050", "-ac", "1", out_wav], check=True, timeout=25, stdout=_k_subprocess.DEVNULL, stderr=_k_subprocess.DEVNULL)
+            if os.path.exists(mp3_tmp):
+                try: os.remove(mp3_tmp)
+                except Exception: pass
+            if os.path.isfile(out_wav) and os.path.getsize(out_wav) > 200:
+                return out_wav
+    except Exception:
+        pass
+
+    # 3) Guaranteed local WAV fallback
+    return _k_make_fallback_wav(out_wav, duration_sec=duration_sec)
+
+def _k_find_font() -> str:
+    candidates = [
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+        "/system/fonts/Roboto-Regular.ttf",
+        "/system/fonts/DroidSans.ttf",
+    ]
+    for p in candidates:
+        if os.path.isfile(p):
+            return p
+    return ""
+
+def render_kaili_mp4(prompt_text: str, duration: int = 22) -> str:
+    dur = max(5, min(60, int(duration or 22)))
+    fname = f"kaili_{_k_uuid.uuid4().hex[:8]}.mp4"
+    out_mp4 = os.path.join(_K_RENDER_DIR, fname)
+
+    caption = _k_clean_text(prompt_text, max_chars=140)
+    safe_cap = caption.replace(":", "\\:").replace("'", "").replace("%", "")
+    font_path = _k_find_font()
+
+    with _k_tempfile.TemporaryDirectory() as tmpd:
+        wav_file = os.path.join(tmpd, "voice.wav")
+        _k_synthesize_voice_wav(prompt_text, wav_file, duration_sec=dur)
+
+        # Animated cybernetic background + neon pulse + optional drawtext overlay
+        vf_parts = [
+            "scale=1280:720",
+            "geq=r='clip(10+25*sin(2*PI*t+X/180),0,255)':g='clip(24+70*abs(sin(PI*t+Y/140)),0,255)':b='clip(48+120*abs(cos(0.7*PI*t+(X+Y)/220)),0,255)'",
+            "drawbox=x=60:y=60:w=1160:h=600:color=0x00E5FF@0.35:t=3"
+        ]
+        if font_path:
+            vf_parts.append(f"drawtext=fontfile='{font_path}':text='KAILI AI 4K STUDIO':fontcolor=0x00E5FF:fontsize=44:x=100:y=115")
+            vf_parts.append(f"drawtext=fontfile='{font_path}':text='{safe_cap}':fontcolor=white:fontsize=28:x=100:y=220:box=1:boxcolor=0x050B14@0.75:boxborderw=14")
+
+        cmd_with_text = [
+            "ffmpeg", "-y",
+            "-f", "lavfi", "-i", f"color=c=0x050B14:s=1280x720:r=24:d={dur}",
+            "-i", wav_file,
+            "-vf", ",".join(vf_parts),
+            "-c:v", "libx264", "-pix_fmt", "yuv420p", "-preset", "ultrafast",
+            "-c:a", "aac", "-b:a", "128k",
+            "-shortest", out_mp4
+        ]
+        try:
+            _k_subprocess.run(cmd_with_text, check=True, timeout=90, stdout=_k_subprocess.DEVNULL, stderr=_k_subprocess.DEVNULL)
+            if os.path.isfile(out_mp4) and os.path.getsize(out_mp4) > 500:
+                return fname
+        except Exception:
+            pass
+
+        # Fallback without drawtext in case ffmpeg build lacks libfreetype
+        cmd_basic = [
+            "ffmpeg", "-y",
+            "-f", "lavfi", "-i", f"color=c=0x081C34:s=1280x720:r=24:d={dur}",
+            "-i", wav_file,
+            "-vf", "geq=r='clip(12+30*sin(t+X/120),0,255)':g='clip(30+80*sin(2*t+Y/120),0,255)':b='clip(60+120*cos(t+(X+Y)/180),0,255)'",
+            "-c:v", "libx264", "-pix_fmt", "yuv420p", "-preset", "ultrafast",
+            "-c:a", "aac", "-b:a", "128k",
+            "-shortest", out_mp4
+        ]
+        _k_subprocess.run(cmd_basic, check=True, timeout=90, stdout=_k_subprocess.DEVNULL, stderr=_k_subprocess.DEVNULL)
+        return fname
+# --- END KAILI REAL VISUAL + VOICE RENDER ENGINE ---
+
